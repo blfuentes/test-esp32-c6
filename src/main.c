@@ -1,21 +1,31 @@
-#include <driver/gpio.h>
-#include <rom/gpio.h>
-#include <freertos/FreeRTOS.h>
-#include <freertos/task.h>
-#include <led_strip.h>
-#include <esp_err.h>
-#include <esp_log.h>
+/* Blink Example
 
-extern "C" void app_main();
+   This example code is in the Public Domain (or CC0 licensed, at your option.)
+
+   Unless required by applicable law or agreed to in writing, this
+   software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+   CONDITIONS OF ANY KIND, either express or implied.
+*/
+#include <stdio.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "driver/gpio.h"
+#include "esp_log.h"
+#include "led_strip.h"
+#include "sdkconfig.h"
+
+#define CONFIG_BLINK_PERIOD 1000
+#define CONFIG_BLINK_GPIO GPIO_NUM_8
+#define BLINK_GPIO CONFIG_BLINK_GPIO
+#define CONFIG_BLINK_LED_STRIP 1
+#define CONFIG_BLINK_LED_STRIP_BACKEND_SPI 1
 
 static const char *TAG = "example";
 
 /* Use project configuration menu (idf.py menuconfig) to choose the GPIO to blink,
    or you can edit the following line and set a number here.
 */
-#define BLINK_GPIO GPIO_NUM_8
-#define CONFIG_BLINK_LED_STRIP 1
-#define CONFIG_BLINK_LED_STRIP_BACKEND_SPI 1
+#define BLINK_GPIO CONFIG_BLINK_GPIO
 
 static uint8_t s_led_state = 0;
 
@@ -53,11 +63,12 @@ static void configure_led(void)
     ESP_ERROR_CHECK(led_strip_new_rmt_device(&strip_config, &rmt_config, &led_strip));
 #elif CONFIG_BLINK_LED_STRIP_BACKEND_SPI
     led_strip_spi_config_t spi_config = {
-        .spi_bus = SPI2_HOST
+        .spi_bus = SPI2_HOST,
+        .flags.with_dma = true,
     };
-    spi_config.flags.with_dma = true;
     ESP_ERROR_CHECK(led_strip_new_spi_device(&strip_config, &spi_config, &led_strip));
 #else
+#error "unsupported LED strip backend"
 #endif
     /* Set all LED off to clear all pixels */
     led_strip_clear(led_strip);
@@ -80,37 +91,20 @@ static void configure_led(void)
 }
 
 #else
+#error "unsupported LED type"
 #endif
 
-// Define task handle
-TaskHandle_t Task1;
-TaskHandle_t Task2;
+void app_main(void)
+{
 
-// Task function for LED blink
-void Task1code(void* parameter) {
-    while (1) {
-        printf("Hello from the LED task!\n");
-        blink_led();
-        s_led_state = !s_led_state;
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
-}
-
-void Task2code(void* parameter) {
-    while(1) {
-        printf("Hello from the task!\n");
-        vTaskDelay(pdMS_TO_TICKS(500));
-    }
-}
-
-void app_main() {
-    // configure led
+    /* Configure the peripheral according to the LED type */
     configure_led();
 
-    xTaskCreatePinnedToCore(Task1code, "Task1", 10000, NULL, 5, &Task1, 0);
-    xTaskCreatePinnedToCore(Task2code, "Task2", 10000, NULL, 10, &Task2, 0);
-    while (true) {
-        printf("Hello, world!\n");
-        vTaskDelay(pdMS_TO_TICKS(1000));
+    while (1) {
+        ESP_LOGI(TAG, "Turning the LED %s!", s_led_state == true ? "ON" : "OFF");
+        blink_led();
+        /* Toggle the LED state */
+        s_led_state = !s_led_state;
+        vTaskDelay(CONFIG_BLINK_PERIOD / portTICK_PERIOD_MS);
     }
 }
